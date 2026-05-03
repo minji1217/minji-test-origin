@@ -20,7 +20,7 @@ class FaissRetriever:
         self.id_mapping = utils.load_pickle(mapping_dict)
         print(f"인덱스 로드 완료 ... (총 {self.index.ntotal}개 논문 존재)")
 
-    def search(self, query_vector, query_ids, source, top_k, similarity_threshold = config.SIMILARITY_THRESHOLD):
+    def search(self, query_vector, query_ids, top_k, similarity_threshold = config.SIMILARITY_THRESHOLD):
         '''
         [FAISS 기반 nearest neighbor 검색 구현 및 필터링]
         1. param query_vector: embedder.encode()에서 나온 768차원 Numpy 배열 (배치 쿼리일 경우, shape: N, 768)
