@@ -66,7 +66,6 @@ class FaissRetriever:
                     "rank": rank,
                     "paper_id": paper_id,
                     "score": round(float(score), 4),
-                    "source" : source[query_idx]
                 })
 
                 rank += 1
