@@ -31,11 +31,11 @@ class SpecterEmbedder:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # (GPU일 경우, FP16 적용) 메모리 사용량을 절반으로 줄이고 속도 높임
-        if self.device.type == "cuda":
-            self.model.to(torch.float16).to(self.device)
+        #if self.device.type == "cuda":
+        #    self.model.to(torch.float16).to(self.device)
         # (CPU일 경우, 기본 정밀도 FP32 실행)
-        else:
-            self.model.to(self.device)
+        #else:
+        self.model.to(self.device)
         
         # 4. 평가 모드 전환 (이미 학습된 Adapter2 가중치 이용)
         self.model.eval()
