@@ -38,12 +38,12 @@ CITE_TAG_PATTERN = r"\[CITE:(.*?)\]"
 # 3. Retrieval & Fusion 하이퍼파라미터 설정
 NUM_SENTENCES = 3           # Context Query 생성시 placeholder 기준 자를 문장 수 
 SIMILARITY_THRESHOLD = 0.2  # FAISS 코사인 유사도 최소 임계값
-PAPER_QUERY_TOP_K = 3000    # paper query 기준 추려올 후보 논문 개수 
+PAPER_QUERY_TOP_K = 5000    # paper query 기준 추려올 후보 논문 개수 
 TOP_K_FINAL = 150           # 후보 논문들 중 context query 통해 가져올 후보 개수 
 # RRF_K = 60                # RRF 스무딩 상수 
 PAPER_BATCH_SIZE = 256      # 논문 배치 크기 (for main)
 QUERY_BATCH_SIZE = 256      # 쿼리 배치 크기 (for encode) 
 MAX_SEQ_LENGTH = 512        # SPECTER2 최대 입력 크기 
-PAPER_SIM_WEIGHT = 0.2      # 가중합 비율 (paper_query) 
-CONTEXT_SIM_WEIGHT = 0.8    # 가중합 비율 (context_query)
+PAPER_SIM_WEIGHT = 0.4      # 가중합 비율 (paper_query) 
+CONTEXT_SIM_WEIGHT = 0.6    # 가중합 비율 (context_query)
 
