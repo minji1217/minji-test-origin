@@ -254,6 +254,26 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         # 이때, embedding_db에 존재하는 논문만 가져와 (i, 벡터)을 담은 리스트 생성 
         # p_ids = [A,B,C,D], embedding db에 A,C만 있어도,
         # valid_data = [(0, vecA), (2,vecC)]로 저장됨 
+        # =====================================================================
+        # 🚨 [긴급 진단] Stage 1 순수 Recall 자동 측정 (여기부터 복붙!)
+        # =====================================================================
+        stage1_hits = 0
+        stage1_total = 0
+        p_ids_set = set(p_ids) 
+        
+        for sample in valid_contexts:
+            gt_ids = sample['target_ids'] 
+            
+            # 교집합으로 3000개 안에 들어온 정답 개수 확인
+            hits = len(set(gt_ids) & p_ids_set)
+            stage1_hits += hits
+            stage1_total += len(gt_ids)
+            
+        if stage1_total > 0:
+            stage1_recall = stage1_hits / stage1_total
+            # 숫자를 5000으로 박아두지 않고 config 값을 읽어오도록 수정!
+            print(f"👉 [진단] {paper_id} 논문의 Stage 1 Recall@{config.PAPER_QUERY_TOP_K}: {stage1_recall:.4f} ({stage1_hits}/{stage1_total})")
+        # =====================================================================
         
         valid_data = [(i, embedding_db[pid]) for i,pid in enumerate(p_ids) if pid in embedding_db]
         if not valid_data: 
