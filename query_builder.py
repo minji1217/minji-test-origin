@@ -72,8 +72,8 @@ class QueryBuilder:
             #         selected_sentences[0] = selected_sentences[0][selected_sentences[0].find(" ")+1:]
 
             # 7. 추출된 문장들을 [SEP] 단위로 결합하여 최종 context 구성 
-            context_query = " [SEP] ".join(selected_sentences)
-            
+            context = " [SEP] ".join(selected_sentences)
+            context_query = f"{title} [SEP] {context}"
             
             ''''
             # 5. [for 정밀화] 토큰 단위로 변환 후 뒤에서부터 추출 
