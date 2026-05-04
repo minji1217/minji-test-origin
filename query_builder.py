@@ -1,6 +1,6 @@
 import re
 import nltk 
-# from transformers import AutoTokenizer
+from transformers import AutoTokenizer
 import config
 
 class QueryBuilder:
@@ -12,7 +12,7 @@ class QueryBuilder:
         self.cite_tag = cite_tag
 
         # SPECTER2 모델이 읽을 수 있는 형태로 글자 잘라주는 도구 
-        # self.tokenizer = AutoTokenizer.from_pretrained(model_name) 
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name) 
 
         # [추가] NLTK 문장 토크나이저 다운로드 (최초 1회만 실행)
         try:
@@ -36,7 +36,7 @@ class QueryBuilder:
         # 논문의 전체 레퍼런스 목록을 집합으로 만듦 (-> for 정답 제거)
         all_refs_set = set(all_references if all_references else [])
 
-        paper_query = f"{title} [SEP] {abstract}"
+        paper_query = title + self.tokenizer.sep_token + abstract 
 
         # 2. 텍스트 내의 모든 [CITE] 위치 찾음
         # 해당 텍스트가 어디서 시작해서 어디에서 끝나는지에 대한 정보 가진 객체 return 
@@ -72,7 +72,7 @@ class QueryBuilder:
             #         selected_sentences[0] = selected_sentences[0][selected_sentences[0].find(" ")+1:]
 
             # 7. 추출된 문장들을 [SEP] 단위로 결합하여 최종 context 구성 
-            context_query = " [SEP] ".join(selected_sentences)
+            context_query = f" {self.tokenizer.sep_token} ".join(selected_sentences)
             
             
             ''''
@@ -151,10 +151,10 @@ class QueryBuilder:
         selected_sentences = sentences[-num_sentences:]
 
         # 문장들을 [SEP] 단위로 결합 
-        context_query = " [SEP] ".join(selected_sentences)
+        context_query = f" {self.tokenizer.sep_token} ".join(selected_sentences)
 
         # 4. 최종 쿼리 생성 (paper_query, context_query 생성)
-        paper_query = f"{title} [SEP] {abstract}".strip()
+        paper_query = title + self.tokenizer.sep_token + abstract
 
         return paper_query, context_query
 
