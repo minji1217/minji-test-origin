@@ -44,6 +44,6 @@ TOP_K_FINAL = 150           # 후보 논문들 중 context query 통해 가져�
 PAPER_BATCH_SIZE = 256      # 논문 배치 크기 (for main)
 QUERY_BATCH_SIZE = 256      # 쿼리 배치 크기 (for encode) 
 MAX_SEQ_LENGTH = 512        # SPECTER2 최대 입력 크기 
-PAPER_SIM_WEIGHT = 0.3      # 가중합 비율 (paper_query) 
-CONTEXT_SIM_WEIGHT = 0.7    # 가중합 비율 (context_query)
+PAPER_SIM_WEIGHT = 0.2      # 가중합 비율 (paper_query) 
+CONTEXT_SIM_WEIGHT = 0.8    # 가중합 비율 (context_query)
 
