@@ -257,6 +257,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         # =====================================================================
         # 🚨 [긴급 진단] Stage 1 순수 Recall 자동 측정 (여기부터 복붙!)
         # =====================================================================
+        '''
         stage1_hits = 0
         stage1_total = 0
         p_ids_set = set(p_ids) 
@@ -274,6 +275,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # 숫자를 5000으로 박아두지 않고 config 값을 읽어오도록 수정!
             print(f"👉 [진단] {paper_id} 논문의 Stage 1 Recall@{config.PAPER_QUERY_TOP_K}: {stage1_recall:.4f} ({stage1_hits}/{stage1_total})")
         # =====================================================================
+        '''
         
         valid_data = [(i, embedding_db[pid]) for i,pid in enumerate(p_ids) if pid in embedding_db]
         if not valid_data: 
