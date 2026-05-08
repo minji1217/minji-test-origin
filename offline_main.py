@@ -663,7 +663,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         # 1. 3개의 쿼리(Full, Title, Abstract)와 후보 논문들의 내적을 '전부 다' 계산해!
         # 결과 Shape: (3, 후보 개수) -> [Full점수들, Title점수들, Abstract점수들]
         all_sims = np.dot(p_vecs, target_matrix.T) 
-        
+
         # 2. 각 논문마다 3개의 점수 중 '가장 높은 점수(Max)'만 채택해! (Max-Sim)
         # 결과 Shape: (후보 개수,)
         valid_p_sims = np.max(all_sims, axis=0)
@@ -684,8 +684,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             c_min, c_max = np.min(c_sims), np.max(c_sims)
             c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
 
-            final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
-
+            #final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
+            final_sims = p_norm * (1.0 + config.CONTEXT_BOOST_RATIO * c_norm)
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
 
             candidates = []
