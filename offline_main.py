@@ -677,7 +677,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         # 4. 문맥별로 최종 순위 계산 및 패키징 
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
-            
+            '''
             p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
             p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8) 
 
@@ -687,7 +687,22 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             #final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
             final_sims = p_norm * (1.0 + config.CONTEXT_BOOST_RATIO * c_norm)
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
-
+            '''
+            # =====================================================================
+            # ✨ [핵심 수정] Min-Max 정규화, 가중합 다 버리고 RRF(등수 융합) 도입!
+            # =====================================================================
+            # 1. 점수를 오름차순으로 두 번 정렬하면 각 논문의 '등수(0등, 1등...)'가 나옴
+            # (점수에 마이너스(-)를 붙여서 내림차순 랭킹을 구함)
+            p_ranks = np.argsort(np.argsort(-valid_p_sims)) 
+            c_ranks = np.argsort(np.argsort(-c_sims))
+            
+            # 2. RRF 수식 적용 (등수는 0부터 시작하므로 +1 해줌)
+            # config.RRF_K는 보통 60을 쓰는 것이 학계 표준 (검색 엔진 SOTA)
+            rrf_scores = (1.0 / (config.RRF_K + p_ranks + 1)) + (1.0 / (config.RRF_K + c_ranks + 1))
+            
+            # 3. 계산된 RRF 점수로 최종 순위 정렬
+            top_idx = np.argsort(rrf_scores)[::-1][:config.TOP_K_FINAL]
+            # =====================================================================
             candidates = []
             for rank, idx in enumerate(top_idx):
                 candidates.append({
