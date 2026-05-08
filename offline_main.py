@@ -719,7 +719,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
 # ... (아래 run_pipeline과 __main__ 부분은 기존과 동일하므로 생략 없이 그대로 쓰면 됩니다!) ...
 
 def run_pipeline(data_path, paper_batch_size):
-    print(f"[Offline 실험용 추천 파이프라인 가동 시작...] (데이터: {data_path})")
+    print(f"new branch1 [Offline 실험용 추천 파이프라인 가동 시작...] (데이터: {data_path})")
     start_time = time.time()
 
     # 1. 모듈 생성 
