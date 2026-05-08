@@ -654,60 +654,68 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         
         valid_p_ids = [p_ids[i] for i in v_indices]
 
-        """
-        # ✨ [핵심 수정] 합집합 과정에서 점수(score)가 꼬이는 것을 방지하기 위해,
-        # Full Query 벡터(p_vecs[0])를 기준으로 타겟 행렬과 일괄 내적하여 Paper Score 재계산!
-        base_p_vec = p_vecs[0] 
-        valid_p_sims = np.dot(base_p_vec, target_matrix.T).squeeze() 
-        """
+        # =================================================
+        # 1. Multi-View RRF 필터링 
+        # 합집합 풀의 노이즈를 등수 기반으로 걸러내서 3000개로 압축 
+        # =================================================
         # 1. 3개의 쿼리(Full, Title, Abstract)와 후보 논문들의 내적을 '전부 다' 계산해!
         # 결과 Shape: (3, 후보 개수) -> [Full점수들, Title점수들, Abstract점수들]
         all_sims = np.dot(p_vecs, target_matrix.T) 
 
-        # 2. 각 논문마다 3개의 점수 중 '가장 높은 점수(Max)'만 채택해! (Max-Sim)
+        # 2. 쿼리별로 오름차순하여 각 논문의 등수 추출 
         # 결과 Shape: (후보 개수,)
-        valid_p_sims = np.max(all_sims, axis=0)
+        rank_full = np.argsort(np.argsort(-all_sims[0]))
+        rank_title = np.argsort(np.argsort(-all_sims[1]))
+        rank_abstract = np.argsort(np.argsort(-all_sims[2]))
 
-        # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
+        # 3. 3쿼리 RRF 점수 계산 
+        K = config.RRF_K # 60
+        view_rrf_scores = (1.0 / (K + rank_full + 1)) + \
+                          (1.0 / (K + rank_title + 1)) + \
+                          (1.0 / (K + rank_abstract + 1))
+        
+        # 4. RRF 점수 상위 3000개 걸러냄 
+        limit = 3000 
+        if len(view_rrf_scores) > limit:
+            top_p_idx = np.argsort(view_rrf_scores)[::-1][:limit]
+            
+            # 행렬과 리스트를 2000개로 축소 
+            target_matrix = target_matrix[top_p_idx]
+            valid_p_ids = [valid_p_ids[i] for i in top_p_idx]
+            surviving_paper_scores = view_rrf_scores[top_p_idx] # 2000개 후보 논문 rrf 점수 보존 
+        else:
+            surviving_paper_scores = view_rrf_scores
+
+        # 5. 행렬 연산으로 모든 문맥 한꺼번에 계산 
         c_queires = [ctx['context_query'] for ctx in valid_contexts]
         c_vecs = embedder.encode(c_queires) 
 
         c_sims_all = np.dot(c_vecs, target_matrix.T)
 
-        # 4. 문맥별로 최종 순위 계산 및 패키징 
+        # 6. 문맥별로 최종 순위 계산 및 패키징 
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
-            '''
-            p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
-            p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8) 
+            
+            # 6-1. Paper 점수 정규화 (이젠 FAISS 점수가 아니라, RRF 점수 정규화)
+            p_min, p_max = np.min(surviving_paper_scores), np.max(surviving_paper_scores)
+            p_norm = (surviving_paper_scores - p_min) / (p_max - p_min + 1e-8) 
 
+            # 6-2. Context 점수 정규화 
             c_min, c_max = np.min(c_sims), np.max(c_sims)
             c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
 
-            #final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
-            final_sims = p_norm * (1.0 + config.CONTEXT_BOOST_RATIO * c_norm)
+            # 6-3.
+            # RRF로 노이즈를 다 쳐냈기 때문에, 더하기(+) 공식을 써도 안전함
+            final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
+
+            # 6-4. top-k 정렬 (최종 150개)
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
-            '''
-            # =====================================================================
-            # ✨ [핵심 수정] Min-Max 정규화, 가중합 다 버리고 RRF(등수 융합) 도입!
-            # =====================================================================
-            # 1. 점수를 오름차순으로 두 번 정렬하면 각 논문의 '등수(0등, 1등...)'가 나옴
-            # (점수에 마이너스(-)를 붙여서 내림차순 랭킹을 구함)
-            p_ranks = np.argsort(np.argsort(-valid_p_sims)) 
-            c_ranks = np.argsort(np.argsort(-c_sims))
             
-            # 2. RRF 수식 적용 (등수는 0부터 시작하므로 +1 해줌)
-            # config.RRF_K는 보통 60을 쓰는 것이 학계 표준 (검색 엔진 SOTA)
-            rrf_scores = (1.0 / (config.RRF_K + p_ranks + 1)) + (1.0 / (config.RRF_K + c_ranks + 1))
-            
-            # 3. 계산된 RRF 점수로 최종 순위 정렬
-            top_idx = np.argsort(rrf_scores)[::-1][:config.TOP_K_FINAL]
-            # =====================================================================
             candidates = []
             for rank, idx in enumerate(top_idx):
                 candidates.append({
                     "paper_id": valid_p_ids[idx],
-                    "sim": float(rrf_scores[idx])
+                    "sim": float(final_sims[idx])
                 })
 
             raw_bibs = sample.get('bib_ids', [])
