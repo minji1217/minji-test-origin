@@ -654,10 +654,19 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         
         valid_p_ids = [p_ids[i] for i in v_indices]
 
+        """
         # ✨ [핵심 수정] 합집합 과정에서 점수(score)가 꼬이는 것을 방지하기 위해,
         # Full Query 벡터(p_vecs[0])를 기준으로 타겟 행렬과 일괄 내적하여 Paper Score 재계산!
         base_p_vec = p_vecs[0] 
         valid_p_sims = np.dot(base_p_vec, target_matrix.T).squeeze() 
+        """
+        # 1. 3개의 쿼리(Full, Title, Abstract)와 후보 논문들의 내적을 '전부 다' 계산해!
+        # 결과 Shape: (3, 후보 개수) -> [Full점수들, Title점수들, Abstract점수들]
+        all_sims = np.dot(p_vecs, target_matrix.T) 
+        
+        # 2. 각 논문마다 3개의 점수 중 '가장 높은 점수(Max)'만 채택해! (Max-Sim)
+        # 결과 Shape: (후보 개수,)
+        valid_p_sims = np.max(all_sims, axis=0)
 
         # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
         c_queires = [ctx['context_query'] for ctx in valid_contexts]
