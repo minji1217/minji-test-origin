@@ -94,7 +94,7 @@ def process_paper_batch_baseline(paper_batch, query_builder, embedder, retriever
 
 
 def run_pipeline(data_path, paper_batch_size):
-    print(f"[🔥 Baseline(로컬 문맥 무시) 파이프라인 가동 시작...] (데이터: {data_path})")
+    print(f"[Baseline(로컬 문맥 무시) 파이프라인 가동 시작...] (데이터: {data_path})")
     start_time = time.time()
 
     query_builder = QueryBuilder()
@@ -112,13 +112,12 @@ def run_pipeline(data_path, paper_batch_size):
     print(f"총 논문 개수 : {total_papers}개 (논문 {paper_batch_size}개씩 묶어서 처리)")
 
     total_queries_so_far = 0
-    # Stage 1 투 트랙을 안 쓰므로 Stage1_Recall 지표도 제외합니다.
     global_metrics = {"Recall@50": 0.0, "Recall@100": 0.0, "Recall@150": 0.0, "MRR": 0.0}
 
     for i in tqdm(range(0, total_papers, paper_batch_size), desc = "배치 처리중"):
         paper_batch = eval_data[i : i + paper_batch_size]
 
-        # ✨ 수정된 baseline 함수 호출
+        # baseline 함수 호출
         batch_results = process_paper_batch_baseline(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db)
         
         batch_queries_count = len(batch_results)

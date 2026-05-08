@@ -204,6 +204,7 @@ if __name__ == "__main__":
 """
 
 """
+original 
 import numpy as np
 import config 
 import time 
@@ -453,6 +454,9 @@ if __name__ == "__main__":
     print("'offline_output.json' 저장 완료")
 """
 
+"""
+recall@3000 출력용
+
 import numpy as np
 import config 
 import time 
@@ -573,7 +577,146 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             })
 
     return final_output_for_next
+"""
 
+import numpy as np
+import config 
+import time 
+import pickle
+import utils
+from tqdm import tqdm 
+from query_builder import QueryBuilder
+from embedder import SpecterEmbedder
+from retriever import FaissRetriever
+from soft_bias import SoftBiasScorer
+from evaluate import calculate_metrics
+
+def softmax_norm(x, temp=0.05):
+    x = x - np.max(x)
+    exp_x = np.exp(x / temp)
+    return exp_x / (np.sum(exp_x) + 1e-9)
+
+def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db, paper_query_top_k = config.PAPER_QUERY_TOP_K):
+    final_output_for_next = []
+    
+    for item in paper_batch:
+        paper_id = item.get('paper_id', '')
+
+        paper_query, context_queries = query_builder.build_offline_query(
+            paper_id, item.get('full_text',''), item.get('title', ''), item.get('abstract',''), item.get('all_references', [])
+        )
+
+        valid_contexts = []
+        for sample in context_queries:
+            vt = [tid for tid in sample['target_ids'] if tid in embedding_db]
+            if vt:
+                sample['target_ids'] = vt
+                valid_contexts.append(sample)
+
+        if not valid_contexts: continue 
+
+        # =====================================================================
+        # ✨ [핵심 개선] Multi-View Retrieval (다중 관점 검색 및 합집합)
+        # =====================================================================
+        title_text = item.get('title', '')
+        abstract_text = item.get('abstract', '')
+        
+        # 1. 3가지 관점의 쿼리 리스트 생성 (빈 문자열 방어)
+        search_queries = [paper_query] # 인덱스 0: Full Query (기본)
+        if title_text.strip(): search_queries.append(title_text) # 인덱스 1: Title
+        if abstract_text.strip(): search_queries.append(abstract_text) # 인덱스 2: Abstract
+        
+        # 2. 3개의 쿼리를 한 번에 배치 임베딩 -> 속도 최적화
+        p_vecs = embedder.encode(search_queries) # Shape: (쿼리 개수, 768)
+        
+        # 3. FAISS 배치 검색 (쿼리 1개당 top_k개씩 물어옴)
+        dummy_ids = [paper_id] * len(search_queries)
+        batch_p_res = retriever.search(p_vecs, dummy_ids, top_k=paper_query_top_k)
+        
+        # 4. 합집합(Union)으로 후보 풀(Pool) 생성
+        p_ids_set = set()
+        for res_list in batch_p_res:
+            p_ids_set.update([res['paper_id'] for res in res_list])
+            
+        p_ids = list(p_ids_set) # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
+        
+        # ✨ Stage 1 정답률 채점을 위해 집합 복사 (p_ids_set 그대로 사용)
+        union_pool_set = p_ids_set 
+
+        # =====================================================================
+
+        valid_data = [(i, embedding_db[pid]) for i,pid in enumerate(p_ids) if pid in embedding_db]
+        if not valid_data: 
+            continue
+        
+        v_indices, t_vectors = zip(*valid_data)
+        target_matrix = np.array(t_vectors).squeeze() # Shape: (합집합 개수, 768)
+        
+        valid_p_ids = [p_ids[i] for i in v_indices]
+
+        # ✨ [핵심 수정] 합집합 과정에서 점수(score)가 꼬이는 것을 방지하기 위해,
+        # Full Query 벡터(p_vecs[0])를 기준으로 타겟 행렬과 일괄 내적하여 Paper Score 재계산!
+        base_p_vec = p_vecs[0] 
+        valid_p_sims = np.dot(base_p_vec, target_matrix.T).squeeze() 
+
+        # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
+        c_queires = [ctx['context_query'] for ctx in valid_contexts]
+        c_vecs = embedder.encode(c_queires) 
+
+        c_sims_all = np.dot(c_vecs, target_matrix.T)
+
+        # 4. 문맥별로 최종 순위 계산 및 패키징 
+        for i, sample in enumerate(valid_contexts):
+            c_sims = c_sims_all[i]
+            
+            p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
+            p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8) 
+
+            c_min, c_max = np.min(c_sims), np.max(c_sims)
+            c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
+
+            final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
+
+            top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
+
+            candidates = []
+            for rank, idx in enumerate(top_idx):
+                candidates.append({
+                    "paper_id": valid_p_ids[idx],
+                    "sim": float(final_sims[idx])
+                })
+
+            raw_bibs = sample.get('bib_ids', [])
+            valid_user_bibs = [b for b in raw_bibs if b in embedding_db]
+            biased = bib_scorer.soft_bias(candidates, valid_user_bibs, embedding_db)
+            
+            norm_sims = np.array([c['sim'] for c in biased])
+            raw_scores = np.array([c.get('bib_score', 0.0) for c in biased])
+            b_min, b_max = np.min(raw_scores), np.max(raw_scores)
+            norm_bibs = (raw_scores - b_min) / (b_max - b_min + 1e-9) if b_max > b_min else np.zeros_like(raw_scores)
+
+            clean_candidates = [{
+                "paper_id": cand['paper_id'],
+                "sim": float(norm_sims[idx]),
+                "bib_score": float(norm_bibs[idx])
+            } for idx, cand in enumerate(biased)]
+
+            # ✨ 합집합 풀(union_pool_set) 안에 정답이 있는지 채점
+            stage1_hits = len(set(sample['target_ids']) & union_pool_set)
+            stage1_total = len(sample['target_ids'])
+
+            final_output_for_next.append({
+                "query_id": sample['query_id'],
+                "target_ids": sample['target_ids'],
+                "context": sample['context_query'],
+                "candidates": clean_candidates,
+                "stage1_hits": stage1_hits,      
+                "stage1_total": stage1_total      
+            })
+
+    return final_output_for_next
+
+# ... (아래 run_pipeline과 __main__ 부분은 기존과 동일하므로 생략 없이 그대로 쓰면 됩니다!) ...
 
 def run_pipeline(data_path, paper_batch_size):
     print(f"[Offline 실험용 추천 파이프라인 가동 시작...] (데이터: {data_path})")
