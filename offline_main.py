@@ -707,7 +707,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             for rank, idx in enumerate(top_idx):
                 candidates.append({
                     "paper_id": valid_p_ids[idx],
-                    "sim": float(final_sims[idx])
+                    "sim": float(rrf_scores[idx])
                 })
 
             raw_bibs = sample.get('bib_ids', [])
