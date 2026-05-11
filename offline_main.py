@@ -777,8 +777,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # =====================================================================
             # ✨ [STEP 3 & 4] 최종 증폭 및 150명 칼질!
             # =====================================================================
-            bib_weight = getattr(config, 'BIB_WEIGHT', 0.2) 
-            final_sims = surviving_text_sims * (1.0 + bib_weight * norm_bibs)
+            bib_weight = config.BIB_WEIGHT 
+            final_sims = surviving_text_sims + (bib_weight * norm_bibs)
 
             final_top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
 
