@@ -648,8 +648,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # =====================================================================
             # ✨ [STEP 1] 텍스트 기하평균 (더하기 '+' 절대 금지! 반드시 곱하기 '*' 사용)
             # =====================================================================
-            #text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
-            text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
+            text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
+            #text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
            # =====================================================================
             # 🚀 [STEP 1.5] 속도 최적화: 텍스트 상위 500명만 먼저 추려내기! 
             # 어차피 500등 밖은 20% 보너스 받아도 150등 안에 못 들어옴
