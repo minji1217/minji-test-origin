@@ -631,7 +631,7 @@ def compute_dynamic_weights(context_sims):
     else:
         return 0.75, 0.25
 
-def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db, paper_query_top_k = config.PAPER_QUERY_TOP_K):
+def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db):
     final_output_for_next = []
     
     for item in paper_batch:
