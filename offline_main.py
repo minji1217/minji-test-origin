@@ -714,7 +714,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             reverse=True
         )
 
-        top_rrf=sorted_rrf[:3000]
+        top_rrf=sorted_rrf[:5000]
 
         
        
