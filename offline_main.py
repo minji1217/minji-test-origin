@@ -651,94 +651,28 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
 
         if not valid_contexts: continue 
 
-        # =====================================================================
-        # ✨ [핵심 개선] Multi-View Retrieval (다중 관점 검색 및 합집합)
-        # =====================================================================
-        title_text = item.get('title', '')
-        abstract_text = item.get('abstract', '')
+        # 1. 오직 Full Query 1개만 벡터로 변환
+        p_vec = embedder.encode([paper_query])[0] # Shape: (768,)
         
-        # 1. 3가지 관점의 쿼리 리스트 생성 (빈 문자열 방어)
-        search_queries = [paper_query] # 인덱스 0: Full Query (기본)
-        if title_text.strip(): search_queries.append(title_text) # 인덱스 1: Title
-        if abstract_text.strip(): search_queries.append(abstract_text) # 인덱스 2: Abstract
+        # 2. FAISS 단일 검색 (합집합 로직 다 버리고 그냥 FULL_TOPK개 가져옴)
+        full_res = retriever.search(p_vec, [paper_id], top_k=config.FULL_TOPK)[0]
         
-        # 2. 3개의 쿼리를 한 번에 배치 임베딩 -> 속도 최적화
-        p_vecs = embedder.encode(search_queries) # Shape: (쿼리 개수, 768)
-        
-        # 3. FAISS 배치 검색 (쿼리 1개당 top_k개씩 물어옴)
-        dummy_ids = [paper_id] * len(search_queries)
-        full_res = retriever.search(
-            p_vecs[0],
-            [paper_id],
-            top_k = config.FULL_TOPK
-        )[0]
-        # full_res = [{"paper_id": "A"},{"paper_id": "B"},{"paper_id": "C"},{"paper_id": "D"}]
+        # 3. 단일 후보 풀(Pool) 생성
+        p_ids = [r["paper_id"] for r in full_res]
+        union_pool_set = set(p_ids) # Stage 1 Recall 채점용
 
-
-        title_res = retriever.search(
-            p_vecs[1],
-            [paper_id],
-            top_k = config.TITLE_TOPK
-        )[0]
-
-        abstract_res = retriever.search(
-            p_vecs[2],
-            [paper_id],
-            top_k = config.ABSTRACT_TOPK
-        )[0]
-        
-
-        p_ids_set = set()
-
-        for res in [full_res, title_res, abstract_res]:
-
-            p_ids_set.update([
-                r["paper_id"]
-                for r in res
-            ])
-
-        # 최종 candidate pool
-        p_ids = list(p_ids_set)
-
-        # stage1 recall 계산용
-        union_pool_set = p_ids_set
-
-        # =====================================================================
-
+        # 4. DB에 있는 유효한 임베딩만 걸러내기
         valid_data = [(i, embedding_db[pid]) for i,pid in enumerate(p_ids) if pid in embedding_db]
         if not valid_data: 
             continue
         
         v_indices, t_vectors = zip(*valid_data)
-        target_matrix = np.array(t_vectors).squeeze() # Shape: (합집합 개수, 768)
-        
+        target_matrix = np.array(t_vectors).squeeze() # Shape: (후보 개수, 768)
         valid_p_ids = [p_ids[i] for i in v_indices]
 
-        """
-        # ✨ [핵심 수정] 합집합 과정에서 점수(score)가 꼬이는 것을 방지하기 위해,
-        # Full Query 벡터(p_vecs[0])를 기준으로 타겟 행렬과 일괄 내적하여 Paper Score 재계산!
-        base_p_vec = p_vecs[0] 
-        valid_p_sims = np.dot(base_p_vec, target_matrix.T).squeeze() 
-        """
-        # 1. 3개의 쿼리(Full, Title, Abstract)와 후보 논문들의 내적을 '전부 다' 계산해!
-        # 결과 Shape: (3, 후보 개수) -> [Full점수들, Title점수들, Abstract점수들]
-        all_sims = np.dot(p_vecs, target_matrix.T) 
-        # Full/title/abstract query 각각 모두 점수 계산
-        # all_sims[0] -> full
-        # all_sims[1] -> title
-        # all_sims[2] -> abstract
-        
+        # 5. 가중합 짬뽕 대신, 순수하게 Full Query와의 내적 점수 하나만 사용!
+        valid_p_sims = np.dot(p_vec, target_matrix.T).squeeze()
 
-        full_sim = all_sims[0]
-        title_sim = all_sims[1]
-        abstract_sim = all_sims[2]
-
-        valid_p_sims = (config.FULL_WT * full_sim
-                        + 
-                        config.TITLE_WT * title_sim
-                        +
-                        config.ABSTRACT_WT * abstract_sim)
-        
 
         # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
         c_queires = [ctx['context_query'] for ctx in valid_contexts]
@@ -810,8 +744,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # =====================================================================
             # ✨ [STEP 1] 텍스트 기하평균 (더하기 '+' 절대 금지! 반드시 곱하기 '*' 사용)
             # =====================================================================
-            text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
-
+            # text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
+            text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
             # =====================================================================
             # ✨ [STEP 2] 150명 자르기 전에, 합집합 생존자 전원에게 Bib 점수 부여!
             # =====================================================================
