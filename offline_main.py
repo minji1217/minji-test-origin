@@ -750,7 +750,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # 🚀 [STEP 1.5] 속도 최적화: 텍스트 상위 500명만 먼저 추려내기! 
             # 어차피 500등 밖은 20% 보너스 받아도 150등 안에 못 들어옴
             # =====================================================================
-            BIB_CANDIDATE_SIZE = 500 # config.py로 빼도 좋아! (500~800 추천)
+            BIB_CANDIDATE_SIZE = config.BIB_CANDIDATE_SIZE # config.py로 빼도 좋아! (500~800 추천)
             
             if len(text_sims) > BIB_CANDIDATE_SIZE:
                 top_text_idx = np.argsort(text_sims)[::-1][:BIB_CANDIDATE_SIZE]
