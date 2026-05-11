@@ -744,8 +744,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # =====================================================================
             # ✨ [STEP 1] 텍스트 기하평균 (더하기 '+' 절대 금지! 반드시 곱하기 '*' 사용)
             # =====================================================================
-            # text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
-            text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
+            text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
+            #text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
             # =====================================================================
             # ✨ [STEP 2] 150명 자르기 전에, 합집합 생존자 전원에게 Bib 점수 부여!
             # =====================================================================
