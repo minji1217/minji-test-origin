@@ -613,22 +613,6 @@ def softmax_norm(x, temp=0.05):
     exp_x = np.exp(x / temp)
     return exp_x / (np.sum(exp_x) + 1e-9)
 
-def compute_dynamic_weights(context_sims):
-
-    std = np.std(context_sims)
-
-    # 문맥 구분력이 낮음
-    if std < 0.03:
-        return 0.8, 0.2
-
-    # 적당히 구분 가능
-    elif std < 0.06:
-        return 0.65, 0.35
-
-    # 문맥이 꽤 강함
-    else:
-        return 0.55, 0.45
-    
 def rrf_fusion(result_lists, k=config.RRF_K):
 
     rrf_scores = {}
@@ -702,26 +686,22 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             [paper_id],
             top_k = config.ABSTRACT_TOPK
         )[0]
-        rrf_scores = rrf_fusion([
-            full_res,
-            title_res,
-            abstract_res
-        ])
-
-        sorted_rrf = sorted(
-            rrf_scores.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-
-        top_rrf=sorted_rrf[:5000]
-
         
-       
-        p_ids = [pid for pid, _ in top_rrf] # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
-        
-        # ✨ Stage 1 정답률 채점을 위해 집합 복사 (p_ids_set 그대로 사용)
-        union_pool_set = set(p_ids)
+
+        p_ids_set = set()
+
+        for res in [full_res, title_res, abstract_res]:
+
+            p_ids_set.update([
+                r["paper_id"]
+                for r in res
+            ])
+
+        # 최종 candidate pool
+        p_ids = list(p_ids_set)
+
+        # stage1 recall 계산용
+        union_pool_set = p_ids_set
 
         # =====================================================================
 
@@ -778,12 +758,12 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
 
 
-            paper_w, context_w = compute_dynamic_weights(c_sims)
-
+            #paper_w, context_w = compute_dynamic_weights(c_sims)
+            
             final_sims = (
-                paper_w * p_norm
+                config.PAPER_SIM_WEIGHT * p_norm
                 +
-                context_w * c_norm
+                config.CONTEXT_SIM_WEIGHT * c_norm
             )
 
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
