@@ -761,9 +761,9 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             #paper_w, context_w = compute_dynamic_weights(c_sims)
             
             final_sims = (
-                config.PAPER_SIM_WEIGHT * valid_p_sims
+                 valid_p_sims ** config.PAPER_SIM_WEIGHT 
                 +
-                config.CONTEXT_SIM_WEIGHT * c_sims
+                c_sims ** config.CONTEXT_SIM_WEIGHT  
             )
 
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
