@@ -751,19 +751,19 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             c_sims = c_sims_all[i]
             
             
-            p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
-            p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8)
-
-            c_min, c_max = np.min(c_sims), np.max(c_sims)
-            c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
+            #p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
+            #p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8)
+#
+            #c_min, c_max = np.min(c_sims), np.max(c_sims)
+            #c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
 
 
             #paper_w, context_w = compute_dynamic_weights(c_sims)
             
             final_sims = (
-                config.PAPER_SIM_WEIGHT * p_norm
+                config.PAPER_SIM_WEIGHT * valid_p_sims
                 +
-                config.CONTEXT_SIM_WEIGHT * c_norm
+                config.CONTEXT_SIM_WEIGHT * c_sims
             )
 
             top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
