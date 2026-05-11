@@ -721,7 +721,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         p_ids = [pid for pid, _ in top_rrf] # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
         
         # ✨ Stage 1 정답률 채점을 위해 집합 복사 (p_ids_set 그대로 사용)
-        union_pool_set = p_ids
+        union_pool_set = set(p_ids)
 
         # =====================================================================
 
