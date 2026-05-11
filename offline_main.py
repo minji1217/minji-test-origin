@@ -750,7 +750,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
             
-            
+            print(np.std(valid_p_sims))
+            print(np.std(c_sims))
             #p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
             #p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8)
 #
