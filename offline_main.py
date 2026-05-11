@@ -615,21 +615,38 @@ def softmax_norm(x, temp=0.05):
 
 def compute_dynamic_weights(context_sims):
 
-    sorted_sims = np.sort(context_sims)[::-1]
+    std = np.std(context_sims)
 
-    top_gap = sorted_sims[0] - sorted_sims[1]
+    # 문맥 구분력이 낮음
+    if std < 0.03:
+        return 0.8, 0.2
 
-    # 문맥이 매우 명확
-    if top_gap > 0.15:
-        return 0.4, 0.6
+    # 적당히 구분 가능
+    elif std < 0.06:
+        return 0.65, 0.35
 
-    # 어느 정도 명확
-    elif top_gap > 0.08:
-        return 0.55, 0.45
-
-    # 애매함
+    # 문맥이 꽤 강함
     else:
-        return 0.75, 0.25
+        return 0.55, 0.45
+    
+def rrf_fusion(result_lists, k=config.RRF_K):
+
+    rrf_scores = {}
+
+    for res_list in result_lists:
+
+        for rank, item in enumerate(res_list):
+
+            pid = item["paper_id"]
+
+            score = 1.0 / (k + rank + 1)
+
+            rrf_scores[pid] = (
+                rrf_scores.get(pid, 0.0)
+                + score
+            )
+
+    return rrf_scores
 
 def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db):
     final_output_for_next = []
@@ -685,18 +702,26 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             [paper_id],
             top_k = config.ABSTRACT_TOPK
         )[0]
+        rrf_scores = rrf_fusion([
+            full_res,
+            title_res,
+            abstract_res
+        ])
+
+        sorted_rrf = sorted(
+            rrf_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        top_rrf=sorted_rrf[:3000]
 
         
-        # 4. 합집합(Union)으로 후보 풀(Pool) 생성
-        p_ids_set = set()
-        for res in [full_res, title_res, abstract_res]:
-            p_ids_set.update([r['paper_id'] for r in res])
-        # r이 full_res, title_res, abstract_res 차례로 돎 
-            
-        p_ids = list(p_ids_set) # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
+       
+        p_ids = [pid for pid, _ in top_rrf] # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
         
         # ✨ Stage 1 정답률 채점을 위해 집합 복사 (p_ids_set 그대로 사용)
-        union_pool_set = p_ids_set 
+        union_pool_set = p_ids
 
         # =====================================================================
 
@@ -746,9 +771,11 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             c_sims = c_sims_all[i]
             
             
-            p_norm = softmax_norm(valid_p_sims, temp=0.03)
-            c_norm = softmax_norm(c_sims, temp=0.05)
+            p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
+            p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8)
 
+            c_min, c_max = np.min(c_sims), np.max(c_sims)
+            c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
 
 
             paper_w, context_w = compute_dynamic_weights(c_sims)
