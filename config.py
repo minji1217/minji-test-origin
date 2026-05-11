@@ -38,7 +38,7 @@ CITE_TAG_PATTERN = r"\[CITE:(.*?)\]"
 # 3. Retrieval & Fusion 하이퍼파라미터 설정
 NUM_SENTENCES = 3           # Context Query 생성시 placeholder 기준 자를 문장 수 
 SIMILARITY_THRESHOLD = 0.0  # FAISS 코사인 유사도 최소 임계값
-FULL_TOPK = 3000    # paper query 기준 추려올 후보 논문 개수 
+FULL_TOPK = 1500    # paper query 기준 추려올 후보 논문 개수 
 
 
 BIB_WEIGHT = 0.2
