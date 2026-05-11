@@ -612,7 +612,7 @@ def softmax_norm(x, temp=0.05):
     x = x - np.max(x)
     exp_x = np.exp(x / temp)
     return exp_x / (np.sum(exp_x) + 1e-9)
-
+'''
 def rrf_fusion(result_lists, k=config.RRF_K):
 
     rrf_scores = {}
@@ -631,7 +631,7 @@ def rrf_fusion(result_lists, k=config.RRF_K):
             )
 
     return rrf_scores
-
+'''
 def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db):
     final_output_for_next = []
     
