@@ -667,7 +667,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         # 3. FAISS 배치 검색 (쿼리 1개당 top_k개씩 물어옴)
         dummy_ids = [paper_id] * len(search_queries)
         full_res = retriever.search(
-            [p_vecs[0]],
+            p_vecs[0],
             [paper_id],
             top_k = config.FULL_TOPK
         )[0]
@@ -675,13 +675,13 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
 
 
         title_res = retriever.search(
-            [p_vecs[1]],
+            p_vecs[1],
             [paper_id],
             top_k = config.TITLE_TOPK
         )[0]
 
         abstract_res = retriever.search(
-            [p_vecs[2]],
+            p_vecs[2],
             [paper_id],
             top_k = config.ABSTRACT_TOPK
         )[0]
