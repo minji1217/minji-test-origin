@@ -747,6 +747,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         c_sims_all = np.dot(c_vecs, target_matrix.T)
 
         # 4. 문맥별로 최종 순위 계산 및 패키징 
+        '''
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
             
@@ -789,6 +790,62 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
                 "sim": float(norm_sims[idx]),
                 "bib_score": float(norm_bibs[idx])
             } for idx, cand in enumerate(biased)]
+
+            # ✨ 합집합 풀(union_pool_set) 안에 정답이 있는지 채점
+            stage1_hits = len(set(sample['target_ids']) & union_pool_set)
+            stage1_total = len(sample['target_ids'])
+
+            final_output_for_next.append({
+                "query_id": sample['query_id'],
+                "target_ids": sample['target_ids'],
+                "context": sample['context_query'],
+                "candidates": clean_candidates,
+                "stage1_hits": stage1_hits,      
+                "stage1_total": stage1_total      
+            })'''
+        # 4. 문맥별로 최종 순위 계산 및 패키징 
+        for i, sample in enumerate(valid_contexts):
+            c_sims = c_sims_all[i]
+            
+            # =====================================================================
+            # ✨ [STEP 1] 텍스트 기하평균 (더하기 '+' 절대 금지! 반드시 곱하기 '*' 사용)
+            # =====================================================================
+            text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
+
+            # =====================================================================
+            # ✨ [STEP 2] 150명 자르기 전에, 합집합 생존자 전원에게 Bib 점수 부여!
+            # =====================================================================
+            raw_bibs = sample.get('bib_ids', [])
+            valid_user_bibs = [b for b in raw_bibs if b in embedding_db]
+            
+            # bib_scorer.soft_bias를 돌리기 위해 전체 풀(valid_p_ids)로 임시 딕셔너리 생성
+            temp_candidates = [{"paper_id": pid} for pid in valid_p_ids]
+            biased_all = bib_scorer.soft_bias(temp_candidates, valid_user_bibs, embedding_db)
+            
+            # Bib 점수만 쏙 뽑아서 정규화 (Min-Max)
+            raw_bib_scores = np.array([c.get('bib_score', 0.0) for c in biased_all])
+            b_min, b_max = np.min(raw_bib_scores), np.max(raw_bib_scores)
+            norm_bibs = (raw_bib_scores - b_min) / (b_max - b_min + 1e-9) if b_max > b_min else np.zeros_like(raw_bib_scores)
+
+            # =====================================================================
+            # ✨ [STEP 3] 텍스트 점수에 Bib 보너스를 증폭기(Multiplier)로 곱함
+            # =====================================================================
+            # config에 BIB_WEIGHT가 없다면 기본값 0.2로 작동하게 세팅
+            bib_weight = getattr(config, 'BIB_WEIGHT', 0.2) 
+            final_sims = text_sims * (1.0 + bib_weight * norm_bibs)
+
+            # =====================================================================
+            # ✨ [STEP 4] 모든 영혼을 끌어모은 최종 점수(final_sims)로 150등 칼질 ✂️
+            # =====================================================================
+            top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
+
+            clean_candidates = []
+            for rank, local_idx in enumerate(top_idx):
+                clean_candidates.append({
+                    "paper_id": valid_p_ids[local_idx],
+                    "sim": float(text_sims[local_idx]),       # 순수 텍스트 점수
+                    "bib_score": float(norm_bibs[local_idx])  # Bib 보너스 점수
+                })
 
             # ✨ 합집합 풀(union_pool_set) 안에 정답이 있는지 채점
             stage1_hits = len(set(sample['target_ids']) & union_pool_set)
