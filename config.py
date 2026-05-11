@@ -41,7 +41,7 @@ SIMILARITY_THRESHOLD = 0.0  # FAISS 코사인 유사도 최소 임계값
 FULL_TOPK = 3000    # paper query 기준 추려올 후보 논문 개수 
 BIB_CANDIDATE_SIZE = 1500
 
-BIB_WEIGHT = 0.05
+BIB_WEIGHT = 0.07
 TOP_K_FINAL = 150           # 후보 논문들 중 context query 통해 가져올 후보 개수 
 # RRF_K = 60                # RRF 스무딩 상수 
 PAPER_BATCH_SIZE = 256      # 논문 배치 크기 (for main)
