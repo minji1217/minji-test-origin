@@ -596,6 +596,41 @@ def softmax_norm(x, temp=0.05):
     exp_x = np.exp(x / temp)
     return exp_x / (np.sum(exp_x) + 1e-9)
 
+import numpy as np
+import config 
+import time 
+import pickle
+import utils
+from tqdm import tqdm 
+from query_builder import QueryBuilder
+from embedder import SpecterEmbedder
+from retriever import FaissRetriever
+from soft_bias import SoftBiasScorer
+from evaluate import calculate_metrics
+
+def softmax_norm(x, temp=0.05):
+    x = x - np.max(x)
+    exp_x = np.exp(x / temp)
+    return exp_x / (np.sum(exp_x) + 1e-9)
+
+def compute_dynamic_weights(context_sims):
+
+    sorted_sims = np.sort(context_sims)[::-1]
+
+    top_gap = sorted_sims[0] - sorted_sims[1]
+
+    # 문맥이 매우 명확
+    if top_gap > 0.15:
+        return 0.4, 0.6
+
+    # 어느 정도 명확
+    elif top_gap > 0.08:
+        return 0.55, 0.45
+
+    # 애매함
+    else:
+        return 0.75, 0.25
+
 def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db, paper_query_top_k = config.PAPER_QUERY_TOP_K):
     final_output_for_next = []
     
@@ -631,12 +666,32 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         
         # 3. FAISS 배치 검색 (쿼리 1개당 top_k개씩 물어옴)
         dummy_ids = [paper_id] * len(search_queries)
-        batch_p_res = retriever.search(p_vecs, dummy_ids, top_k=paper_query_top_k)
+        full_res = retriever.search(
+            [p_vecs[0]],
+            [paper_id],
+            top_k = config.FULL_TOPK
+        )[0]
+        # full_res = [{"paper_id": "A"},{"paper_id": "B"},{"paper_id": "C"},{"paper_id": "D"}]
+
+
+        title_res = retriever.search(
+            [p_vecs[1]],
+            [paper_id],
+            top_k = config.TITLE_TOPK
+        )[0]
+
+        abstract_res = retriever.search(
+            [p_vecs[2]],
+            [paper_id],
+            top_k = config.ABSTRACT_TOPK
+        )[0]
+
         
         # 4. 합집합(Union)으로 후보 풀(Pool) 생성
         p_ids_set = set()
-        for res_list in batch_p_res:
-            p_ids_set.update([res['paper_id'] for res in res_list])
+        for res in [full_res, title_res, abstract_res]:
+            p_ids_set.update([r['paper_id'] for r in res])
+        # r이 full_res, title_res, abstract_res 차례로 돎 
             
         p_ids = list(p_ids_set) # 중복 제거된 거대한 합집합 리스트 (최대 3 * top_k 개)
         
@@ -654,63 +709,58 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         
         valid_p_ids = [p_ids[i] for i in v_indices]
 
-        # =================================================
-        # 1. Multi-View RRF 필터링 
-        # 합집합 풀의 노이즈를 등수 기반으로 걸러내서 3000개로 압축 
-        # =================================================
+        """
+        # ✨ [핵심 수정] 합집합 과정에서 점수(score)가 꼬이는 것을 방지하기 위해,
+        # Full Query 벡터(p_vecs[0])를 기준으로 타겟 행렬과 일괄 내적하여 Paper Score 재계산!
+        base_p_vec = p_vecs[0] 
+        valid_p_sims = np.dot(base_p_vec, target_matrix.T).squeeze() 
+        """
         # 1. 3개의 쿼리(Full, Title, Abstract)와 후보 논문들의 내적을 '전부 다' 계산해!
         # 결과 Shape: (3, 후보 개수) -> [Full점수들, Title점수들, Abstract점수들]
         all_sims = np.dot(p_vecs, target_matrix.T) 
-
-        # 2. 쿼리별로 오름차순하여 각 논문의 등수 추출 
-        # 결과 Shape: (후보 개수,)
-        rank_full = np.argsort(np.argsort(-all_sims[0]))
-        rank_title = np.argsort(np.argsort(-all_sims[1]))
-        rank_abstract = np.argsort(np.argsort(-all_sims[2]))
-
-        # 3. 3쿼리 RRF 점수 계산 
-        K = config.RRF_K # 60
-        view_rrf_scores = (1.0 / (K + rank_full + 1)) + \
-                          (1.0 / (K + rank_title + 1)) + \
-                          (1.0 / (K + rank_abstract + 1))
+        # Full/title/abstract query 각각 모두 점수 계산
+        # all_sims[0] -> full
+        # all_sims[1] -> title
+        # all_sims[2] -> abstract
         
-        # 4. RRF 점수 상위 3000개 걸러냄 
-        limit = 3000 
-        if len(view_rrf_scores) > limit:
-            top_p_idx = np.argsort(view_rrf_scores)[::-1][:limit]
-            
-            # 행렬과 리스트를 2000개로 축소 
-            target_matrix = target_matrix[top_p_idx]
-            valid_p_ids = [valid_p_ids[i] for i in top_p_idx]
-            surviving_paper_scores = view_rrf_scores[top_p_idx] # 2000개 후보 논문 rrf 점수 보존 
-        else:
-            surviving_paper_scores = view_rrf_scores
 
-        # 5. 행렬 연산으로 모든 문맥 한꺼번에 계산 
+        full_sim = all_sims[0]
+        title_sim = all_sims[1]
+        abstract_sim = all_sims[2]
+
+        valid_p_sims = (config.FULL_WT * full_sim
+                        + 
+                        config.TITLE_WT * title_sim
+                        +
+                        config.ABSTRACT_WT * abstract_sim)
+        
+
+        # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
         c_queires = [ctx['context_query'] for ctx in valid_contexts]
         c_vecs = embedder.encode(c_queires) 
 
         c_sims_all = np.dot(c_vecs, target_matrix.T)
 
-        # 6. 문맥별로 최종 순위 계산 및 패키징 
+        # 4. 문맥별로 최종 순위 계산 및 패키징 
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
             
-            # 6-1. Paper 점수 정규화 (이젠 FAISS 점수가 아니라, RRF 점수 정규화)
-            p_min, p_max = np.min(surviving_paper_scores), np.max(surviving_paper_scores)
-            p_norm = (surviving_paper_scores - p_min) / (p_max - p_min + 1e-8) 
-
-            # 6-2. Context 점수 정규화 
-            c_min, c_max = np.min(c_sims), np.max(c_sims)
-            c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
-
-            # 6-3.
-            # RRF로 노이즈를 다 쳐냈기 때문에, 더하기(+) 공식을 써도 안전함
-            final_sims = (config.PAPER_SIM_WEIGHT * p_norm) + (config.CONTEXT_SIM_WEIGHT * c_norm)
-
-            # 6-4. top-k 정렬 (최종 150개)
-            top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
             
+            p_norm = softmax_norm(valid_p_sims, temp=0.03)
+            c_norm = softmax_norm(c_sims, temp=0.05)
+
+
+
+            paper_w, context_w = compute_dynamic_weights(c_sims)
+
+            final_sims = (
+                paper_w * p_norm
+                +
+                context_w * c_norm
+            )
+
+            top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
+
             candidates = []
             for rank, idx in enumerate(top_idx):
                 candidates.append({
