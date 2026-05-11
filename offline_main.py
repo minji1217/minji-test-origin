@@ -591,47 +591,7 @@ from retriever import FaissRetriever
 from soft_bias import SoftBiasScorer
 from evaluate import calculate_metrics
 
-def softmax_norm(x, temp=0.05):
-    x = x - np.max(x)
-    exp_x = np.exp(x / temp)
-    return exp_x / (np.sum(exp_x) + 1e-9)
 
-import numpy as np
-import config 
-import time 
-import pickle
-import utils
-from tqdm import tqdm 
-from query_builder import QueryBuilder
-from embedder import SpecterEmbedder
-from retriever import FaissRetriever
-from soft_bias import SoftBiasScorer
-from evaluate import calculate_metrics
-
-def softmax_norm(x, temp=0.05):
-    x = x - np.max(x)
-    exp_x = np.exp(x / temp)
-    return exp_x / (np.sum(exp_x) + 1e-9)
-'''
-def rrf_fusion(result_lists, k=config.RRF_K):
-
-    rrf_scores = {}
-
-    for res_list in result_lists:
-
-        for rank, item in enumerate(res_list):
-
-            pid = item["paper_id"]
-
-            score = 1.0 / (k + rank + 1)
-
-            rrf_scores[pid] = (
-                rrf_scores.get(pid, 0.0)
-                + score
-            )
-
-    return rrf_scores
-'''
 def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_scorer, embedding_db):
     final_output_for_next = []
     
@@ -680,63 +640,7 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
 
         c_sims_all = np.dot(c_vecs, target_matrix.T)
 
-        # 4. 문맥별로 최종 순위 계산 및 패키징 
-        '''
-        for i, sample in enumerate(valid_contexts):
-            c_sims = c_sims_all[i]
-            
-            
-            #p_min, p_max = np.min(valid_p_sims), np.max(valid_p_sims)
-            #p_norm = (valid_p_sims - p_min) / (p_max - p_min + 1e-8)
-#
-            #c_min, c_max = np.min(c_sims), np.max(c_sims)
-            #c_norm = (c_sims - c_min) / (c_max - c_min + 1e-8)
-
-
-            #paper_w, context_w = compute_dynamic_weights(c_sims)
-            
-            final_sims = (
-                 (valid_p_sims ** config.PAPER_SIM_WEIGHT) 
-                *
-                (c_sims ** config.CONTEXT_SIM_WEIGHT)  
-            )
-
-            top_idx = np.argsort(final_sims)[::-1][:config.TOP_K_FINAL]
-
-            candidates = []
-            for rank, idx in enumerate(top_idx):
-                candidates.append({
-                    "paper_id": valid_p_ids[idx],
-                    "sim": float(final_sims[idx])
-                })
-
-            raw_bibs = sample.get('bib_ids', [])
-            valid_user_bibs = [b for b in raw_bibs if b in embedding_db]
-            biased = bib_scorer.soft_bias(candidates, valid_user_bibs, embedding_db)
-            
-            norm_sims = np.array([c['sim'] for c in biased])
-            raw_scores = np.array([c.get('bib_score', 0.0) for c in biased])
-            b_min, b_max = np.min(raw_scores), np.max(raw_scores)
-            norm_bibs = (raw_scores - b_min) / (b_max - b_min + 1e-9) if b_max > b_min else np.zeros_like(raw_scores)
-
-            clean_candidates = [{
-                "paper_id": cand['paper_id'],
-                "sim": float(norm_sims[idx]),
-                "bib_score": float(norm_bibs[idx])
-            } for idx, cand in enumerate(biased)]
-
-            # ✨ 합집합 풀(union_pool_set) 안에 정답이 있는지 채점
-            stage1_hits = len(set(sample['target_ids']) & union_pool_set)
-            stage1_total = len(sample['target_ids'])
-
-            final_output_for_next.append({
-                "query_id": sample['query_id'],
-                "target_ids": sample['target_ids'],
-                "context": sample['context_query'],
-                "candidates": clean_candidates,
-                "stage1_hits": stage1_hits,      
-                "stage1_total": stage1_total      
-            })'''
+        
         # 4. 문맥별로 최종 순위 계산 및 패키징 
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
@@ -744,8 +648,8 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
             # =====================================================================
             # ✨ [STEP 1] 텍스트 기하평균 (더하기 '+' 절대 금지! 반드시 곱하기 '*' 사용)
             # =====================================================================
-            text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
-            #text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
+            #text_sims = (valid_p_sims ** config.PAPER_SIM_WEIGHT) * (c_sims ** config.CONTEXT_SIM_WEIGHT)
+            text_sims = (valid_p_sims * config.PAPER_SIM_WEIGHT) + (c_sims * config.CONTEXT_SIM_WEIGHT)
            # =====================================================================
             # 🚀 [STEP 1.5] 속도 최적화: 텍스트 상위 500명만 먼저 추려내기! 
             # 어차피 500등 밖은 20% 보너스 받아도 150등 안에 못 들어옴
