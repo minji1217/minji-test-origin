@@ -53,14 +53,14 @@ def process_paper_batch(paper_batch, query_builder, embedder, retriever, bib_sco
         valid_p_sims = np.dot(p_vec, target_matrix.T).squeeze()
 
 
-        # 3. 행렬 연산으로 모든 문맥 한꺼번에 계산 
+        # 6. 행렬 연산으로 모든 문맥 한꺼번에 계산 
         c_queires = [ctx['context_query'] for ctx in valid_contexts]
         c_vecs = embedder.encode(c_queires) 
 
         c_sims_all = np.dot(c_vecs, target_matrix.T)
 
         
-        # 4. 문맥별로 최종 순위 계산 및 패키징 
+        # 7. 문맥별로 최종 순위 계산 및 패키징 
         for i, sample in enumerate(valid_contexts):
             c_sims = c_sims_all[i]
             
@@ -179,7 +179,7 @@ def run_pipeline(data_path, paper_batch_size):
             
             total_queries_so_far += batch_queries_count
 
-            # ✨ 프린트문에 Stage1_Recall 출력 추가
+            # Stage1_Recall 출력 추가
             print(f"[Batch 성능] Stage1_Recall: {batch_metrics['Stage1_Recall'] / batch_queries_count:.4f} | Recall@50: {batch_metrics['Recall@50'] / batch_queries_count:.4f} | Recall@100: {batch_metrics['Recall@100'] / batch_queries_count:.4f} | Recall@150: {batch_metrics['Recall@150'] / batch_queries_count:.4f} | MRR: {batch_metrics['MRR'] / batch_queries_count:.4f}")
         
         all_processed_queries.extend(batch_results)

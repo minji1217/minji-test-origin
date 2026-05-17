@@ -46,7 +46,7 @@ def process_paper_batch_baseline(paper_batch, query_builder, embedder, retriever
         p_res = retriever.search(p_vec, [paper_id], top_k = config.TOP_K_FINAL)[0]
 
         # =====================================================================
-        # [Baseline 핵심 2] 로컬 문맥(c_vecs) 연산 삭제 
+        # 로컬 문맥(c_vecs) 연산 삭제 
         # 원래 기존 코드에 있던 target_matrix 생성, c_vecs 인코딩, np.dot 내적, 
         # 그리고 0.4(p_norm) + 0.6(c_norm) 가중합 로직이 제거됨 
         # =====================================================================
@@ -63,7 +63,7 @@ def process_paper_batch_baseline(paper_batch, query_builder, embedder, retriever
                 })
 
             # =====================================================================
-            # [Baseline 핵심 3] Soft Bias는 유지 (공평한 비교를 위해)
+            # Soft Bias는 유지 (공평한 비교를 위해)
             # 로컬 문맥의 효과'만' 순수하게 비교하기 위해, 
             # 서지 정보(그래프)를 필터링하는 모듈은 똑같이 적용
             # =====================================================================
